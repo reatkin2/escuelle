@@ -200,7 +200,11 @@ joinComponent
 tableExprPart
     : IDENTIFIER { $$ = $1; }
     | QUALIFIED_IDENTIFIER { $$ = $1; }
-    | LPAREN selectClause RPAREN { $$ = $2; }
+    | subselect { $$ = $1; }
+    ;
+    
+subselect
+    : LPAREN selectClause RPAREN { $$ = $2; }
     ;
 
 optTableExprAlias
@@ -225,7 +229,7 @@ optJoinModifier
 expression
     : andCondition { $$ = {type:'and', value: $1}; }
     | expression LOGICAL_OR andCondition { $$ = {type:'or', left: $1, right: $3}; }
-    | LPAREN selectClause RPAREN { $$ = $2; }
+    | subselect { $$ = $1; }
     ;
 
 andCondition
@@ -236,7 +240,7 @@ andCondition
 condition
     : operand { $$ = {type: 'condition', value: $1}; }
     | operand conditionRightHandSide { $$ = {type: 'binaryCondition', left: $1, right: $2}; }
-    | EXISTS LPAREN selectClause RPAREN { $$ = {type: 'existsCondition', value: $3}; }
+    | EXISTS subselect { $$ = {type: 'existsCondition', value: $2}; }
     | LOGICAL_NOT condition { $$ = {type: 'notCondition', value: $2}; }
     ;
 
@@ -260,9 +264,9 @@ conditionRightHandSide
 
 rhsCompareTest
     : compare operand { $$ = {type: 'rhsCompare', op: $1, value: $2 }; }
-    | compare ALL LPAREN selectClause RPAREN { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $4 }; }
-    | compare ANY LPAREN selectClause RPAREN { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $4 }; }
-    | compare SOME LPAREN selectClause RPAREN { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $4 }; }
+    | compare ALL subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
+    | compare ANY subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
+    | compare SOME subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
     ;
 
 rhsIsTest
@@ -273,8 +277,8 @@ rhsIsTest
     ;
     
 rhsInTest
-    : IN LPAREN selectClause RPAREN { $$ = { type: 'rhsInSelect', value: $3 }; }
-    | LOGICAL_NOT IN LPAREN selectClause RPAREN { $$ = { type: 'rhsInSelect', value: $4, not:1 }; }
+    : IN subselect { $$ = { type: 'rhsInSelect', value: $2 }; }
+    | LOGICAL_NOT IN subselect { $$ = { type: 'rhsInSelect', value: $3, not:1 }; }
     | IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'rhsInExpressionList', value: $3 }; }
     | LOGICAL_NOT IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'rhsInExpressionList', value: $4, not:1 }; }
     ;
@@ -361,15 +365,10 @@ optCaseWhenElse
 value
     : STRING { $$ = {type: 'string', value: $1}; } 
     | NUMERIC { $$ = {type: 'number', value: $1}; }
-    | MINUS NUMERIC { $$ = {type: 'number', value: -1 * $2} }
-    | PLUS NUMERIC { $$ = {type: 'number', value: $2} }
+    | MINUS NUMERIC { $$ = {type: 'number', value: -1 * $2}; }
+    | PLUS NUMERIC { $$ = {type: 'number', value: $2}; }
     | PARAMETER { $$ = {type: 'param', name: $1.substring(1)}; }
     | BOOLEAN { $$ = {type: 'boolean', value: $1}; }
     | NULL { $$ = {type: 'null'}; }
-    | unknown { $$ = {type: 'unknown', value: $1}; }
-    ;
-    
-unknown
-    : INVALID { $$ = $1; }
     ;
 

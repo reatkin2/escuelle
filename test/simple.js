@@ -9,7 +9,7 @@ describe('Simple Select', function(){
     'SELECT * FROM table1 a, table2 b WHERE a.id = b.fk',
     'SELECT CustomCol as Alias FROM table ORDER BY CustomCol, OtherCol DESC',
     'SELECT Label, COUNT(*) as Counter FROM table GROUP BY Label',
-    'SELECT DISTINCT * FROM this WHERE id = :arg1',
+    'SELECT DISTINCT * FROM this WHERE id = :arg1'
   ];
 
   it(query[0], function(){
