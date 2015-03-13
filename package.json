@@ -1,6 +1,6 @@
 {
-  "name": "escuelle",
-  "version": "0.0.3",
+  "name": "ent-escuelle",
+  "version": "0.0.1",
   "description": "SQL tokeniser & parser",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ichiriac/escuelle.git"
+    "url": "https://github.com/reatkin2/escuelle.git"
   },
   "keywords": [
     "sql",
@@ -18,10 +18,17 @@
   ],
   "author": "Ioan CHIRIAC",
   "license": "MIT",
+  "contributors": [
+    {
+      "name": "Robert Atkinson",
+      "email": "robert@entrinsik.com",
+      "url": "https://github.com/reatkin2"
+    }  
+  ],
   "bugs": {
-    "url": "https://github.com/ichiriac/escuelle/issues"
+    "url": "https://github.com/reatkin2/escuelle/issues"
   },
-  "homepage": "https://github.com/ichiriac/escuelle",
+  "homepage": "https://github.com/reatkin2/escuelle",
   "devDependencies": {
     "jison": "^0.4.15",
     "mocha": "^2.1.0",
