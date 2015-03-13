@@ -37,6 +37,8 @@
 '<'                                              return 'CMP_LESS'
 '('                                              return 'LPAREN'
 ')'                                              return 'RPAREN'
+'['                                              return 'LPAREN'
+']'                                              return 'RPAREN'
 '||'                                             return 'CONCAT'
 'AS'                                             return 'AS'
 'ALL'                                            return 'ALL'
@@ -68,14 +70,21 @@
 'NULLS'                                          return 'NULLS'
 'FIRST'                                          return 'FIRST'
 'LAST'                                           return 'LAST'
+'UNION'                                          return 'UNION'
+'INTERSECT'                                      return 'INTERSECT'
+'EXCEPT'                                         return 'EXCEPT'
+'MINUS'                                          return 'SETMINUS'
+[0-9]*\.?[0-9]+                                  return 'NUMERIC'
 ['](\\.|[^'])*[']                                return 'STRING'
 'NULL'                                           return 'NULL'
 (true|false)                                     return 'BOOLEAN'
 ':'[a-zA-Z_][a-zA-Z0-9_]*                        return 'PARAMETER'
-[0-9]+(\.[0-9]+)?                                return 'NUMERIC'
 [a-zA-Z_][a-zA-Z0-9_]*                           return 'IDENTIFIER'
+["](\\.|[^"])*["]                                return 'ALIAS'
+[`](\\.|[^`])*[`]                                return 'ALIAS'
 <<EOF>>                                          return 'EOF'
 .                                                return 'INVALID'
+
 
 /lex
 
@@ -88,15 +97,20 @@ main
     ;
 
 selectClause
-    : SELECT optDistinct selectExprList 
-      FROM tableExprList
-      optWhereClause optGroupByClause optHavingClause optOrderByClause
-      { $$ = {type: 'select', distinct: !!$1, columns: $3, from: $5, where:$6, group:$7, having:$8, order:$9}; }
+    : SELECT optDistinct selectExprList
+      optFromClause
+      optWhereClause optGroupByClause optHavingClause optOrderByClause optSetOp
+      { $$ = {type: 'select', distinct: !!$2, columns: $3, from: $4, where:$5, group:$6, having:$7, order:$8, setOp: $9}; }
     ;
 
 optDistinct
     : { $$ = false; }
     | DISTINCT { $$ = true; }
+    ;
+    
+optFromClause
+    : { $$ = null; }
+    | FROM tableExprList { $$ = $2; }
     ;
 
 optWhereClause
@@ -117,6 +131,23 @@ optHavingClause
 optOrderByClause
     : { $$ = null; }
     | ORDER_BY orderByList { $$ = $2; }
+    ;
+    
+optSetOp
+    : { $$ = null; }
+    | setOp optAll selectClause { $$ = {type: $1, all: !!$2, select: $3}; }
+    ;
+    
+setOp
+    : UNION { $$ = 'union'; }
+    | INTERSECT { $$ = 'intersect'; }
+    | SETMINUS { $$ = 'minus'; }
+    | EXCEPT { $$ = 'except'; }
+    ;
+    
+optAll
+    : { $$ = null; }
+    | ALL { $$ = true; }
     ;
 
 orderByList
@@ -169,13 +200,18 @@ joinComponent
 tableExprPart
     : IDENTIFIER { $$ = $1; }
     | QUALIFIED_IDENTIFIER { $$ = $1; }
-    | LPAREN selectClause RPAREN { $$ = $2; }
+    | subselect { $$ = $1; }
+    ;
+    
+subselect
+    : LPAREN selectClause RPAREN { $$ = $2; }
     ;
 
 optTableExprAlias
     : { $$ = null; }
     | IDENTIFIER { $$ = {value: $1 }; }
     | AS IDENTIFIER { $$ = {value: $2, alias: 1}; }
+    | AS ALIAS { $$ = {value: $2, alias: 1}; }
     ;
 
 optJoinModifier
@@ -193,6 +229,7 @@ optJoinModifier
 expression
     : andCondition { $$ = {type:'and', value: $1}; }
     | expression LOGICAL_OR andCondition { $$ = {type:'or', left: $1, right: $3}; }
+    | subselect { $$ = $1; }
     ;
 
 andCondition
@@ -201,10 +238,10 @@ andCondition
     ;
 
 condition
-    : operand { $$ = {type: 'Condition', value: $1}; }
-    | operand conditionRightHandSide { $$ = {type: 'BinaryCondition', left: $1, right: $2}; }
-    | EXISTS LPAREN selectClause RPAREN { $$ = {type: 'ExistsCondition', value: $3}; }
-    | LOGICAL_NOT condition { $$ = {type: 'NotCondition', value: $2}; }
+    : operand { $$ = {type: 'condition', value: $1}; }
+    | operand conditionRightHandSide { $$ = {type: 'binaryCondition', left: $1, right: $2}; }
+    | EXISTS subselect { $$ = {type: 'existsCondition', value: $2}; }
+    | LOGICAL_NOT condition { $$ = {type: 'notCondition', value: $2}; }
     ;
 
 compare
@@ -226,24 +263,24 @@ conditionRightHandSide
     ;
 
 rhsCompareTest
-    : compare operand { $$ = {type: 'RhsCompare', op: $1, value: $2 }; }
-    | compare ALL LPAREN selectClause RPAREN { $$ = {type: 'RhsCompareSub', op:$1, kind: $2, value: $4 }; }
-    | compare ANY LPAREN selectClause RPAREN { $$ = {type: 'RhsCompareSub', op:$1, kind: $2, value: $4 }; }
-    | compare SOME LPAREN selectClause RPAREN { $$ = {type: 'RhsCompareSub', op:$1, kind: $2, value: $4 }; }
+    : compare operand { $$ = {type: 'rhsCompare', op: $1, value: $2 }; }
+    | compare ALL subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
+    | compare ANY subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
+    | compare SOME subselect { $$ = {type: 'rhsCompareSub', op:$1, kind: $2, value: $3 }; }
     ;
 
 rhsIsTest
-    : IS operand { $$ = {type: 'RhsIs', value: $2}; }
-    | IS LOGICAL_NOT operand { $$ = {type: 'RhsIs', value: $3, not:1}; }
-    | IS DISTINCT FROM operand { $$ = {type: 'RhsIs', value: $4, distinctFrom:1}; }
-    | IS LOGICAL_NOT DISTINCT FROM operand { $$ = {type: 'RhsIs', value: $5, not:1, distinctFrom:1}; }
+    : IS operand { $$ = {type: 'rhsIs', value: $2}; }
+    | IS LOGICAL_NOT operand { $$ = {type: 'rhsIs', value: $3, not:1}; }
+    | IS DISTINCT FROM operand { $$ = {type: 'rhsIs', value: $4, distinctFrom:1}; }
+    | IS LOGICAL_NOT DISTINCT FROM operand { $$ = {type: 'rhsIs', value: $5, not:1, distinctFrom:1}; }
     ;
     
 rhsInTest
-    : IN LPAREN selectClause RPAREN { $$ = { type: 'RhsInSelect', value: $3 }; }
-    | LOGICAL_NOT IN LPAREN selectClause RPAREN { $$ = { type: 'RhsInSelect', value: $4, not:1 }; }
-    | IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'RhsInExpressionList', value: $3 }; }
-    | LOGICAL_NOT IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'RhsInExpressionList', value: $4, not:1 }; }
+    : IN subselect { $$ = { type: 'rhsInSelect', value: $2 }; }
+    | LOGICAL_NOT IN subselect { $$ = { type: 'rhsInSelect', value: $3, not:1 }; }
+    | IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'rhsInExpressionList', value: $3 }; }
+    | LOGICAL_NOT IN LPAREN commaSepExpressionList RPAREN { $$ = { type: 'rhsInExpressionList', value: $4, not:1 }; }
     ;
 
 commaSepExpressionList
@@ -265,7 +302,7 @@ functionExpressionList
 /*
  * Function params are defined by an optional list of functionParam elements,
  * because you may call functions of with STAR/QUALIFIED_STAR parameters (Like COUNT(*)),
- * which aren't `Term`(s) because they cant't have an alias
+ * which aren't `term`(s) because they cant't have an alias
  */
 optFunctionExpressionList
     : { $$ = null; }
@@ -273,13 +310,13 @@ optFunctionExpressionList
     ;
 
 rhsLikeTest
-    : LIKE operand { $$ = {type: 'RhsLike', value: $2}; }
-    | LOGICAL_NOT LIKE operand { $$ = {type: 'RhsLike', value: $3, not:1}; }
+    : LIKE operand { $$ = {type: 'rhsLike', value: $2}; }
+    | LOGICAL_NOT LIKE operand { $$ = {type: 'rhsLike', value: $3, not:1}; }
     ;
 
 rhsBetweenTest
-    : BETWEEN operand LOGICAL_AND operand { $$ = {type: 'RhsBetween', left: $2, right: $4}; }
-    | LOGICAL_NOT BETWEEN operand LOGICAL_AND operand { $$ = {type: 'RhsBetween', left: $3, right: $5, not:1}; }
+    : BETWEEN operand LOGICAL_AND operand { $$ = {type: 'rhsBetween', left: $2, right: $4}; }
+    | LOGICAL_NOT BETWEEN operand LOGICAL_AND operand { $$ = {type: 'rhsBetween', left: $3, right: $5, not:1}; }
     ;
 
 operand
@@ -290,23 +327,23 @@ operand
 
 summand
     : factor { $$ = $1; }
-    | summand PLUS factor { $$ = {type:'Summand', left:$1, right:$3, op:$2}; }
-    | summand MINUS factor { $$ = {type:'Summand', left:$1, right:$3, op:$2}; }
+    | summand PLUS factor { $$ = {type:'summand', left:$1, right:$3, op:$2}; }
+    | summand MINUS factor { $$ = {type:'summand', left:$1, right:$3, op:$2}; }
     ;
 
 factor
     : term { $$ = $1; }
-    | factor DIVIDE term { $$ = {type:'Factor', left:$1, right:$3, op:$2}; }
-    | factor STAR term { $$ = {type:'Factor', left:$1, right:$3, op:$2}; }
-    | factor MODULO term { $$ = {type:'Factor', left:$1, right:$3, op:$2}; }
+    | factor DIVIDE term { $$ = {type:'factor', left:$1, right:$3, op:$2}; }
+    | factor STAR term { $$ = {type:'factor', left:$1, right:$3, op:$2}; }
+    | factor MODULO term { $$ = {type:'factor', left:$1, right:$3, op:$2}; }
     ;
 
 term
     : value { $$ = $1; }
-    | IDENTIFIER { $$ = {type: 'Term', value: $1}; }
-    | QUALIFIED_IDENTIFIER { $$ = {type: 'Term', value: $1}; }
+    | IDENTIFIER { $$ = {type: 'term', value: $1}; }
+    | QUALIFIED_IDENTIFIER { $$ = {type: 'term', value: $1}; }
     | caseWhen { $$ = $1; }
-    | LPAREN expression RPAREN { $$ = {type: 'Term', value: $2}; }
+    | LPAREN expression RPAREN { $$ = {type: 'term', value: $2}; }
     | IDENTIFIER LPAREN optFunctionExpressionList RPAREN { $$ = {type: 'call', name: $1, args: $3}; }
     | QUALIFIED_IDENTIFIER LPAREN optFunctionExpressionList RPAREN { $$ = {type: 'call', name: $1, args: $3}; }
     ;
@@ -328,6 +365,8 @@ optCaseWhenElse
 value
     : STRING { $$ = {type: 'string', value: $1}; } 
     | NUMERIC { $$ = {type: 'number', value: $1}; }
+    | MINUS NUMERIC { $$ = {type: 'number', value: -1 * $2}; }
+    | PLUS NUMERIC { $$ = {type: 'number', value: $2}; }
     | PARAMETER { $$ = {type: 'param', name: $1.substring(1)}; }
     | BOOLEAN { $$ = {type: 'boolean', value: $1}; }
     | NULL { $$ = {type: 'null'}; }

@@ -1,5 +1,5 @@
 var assert = require("assert");
-var lib = require("../index");
+var lib = require("../lib/parser").parse;
 
 describe('Simple Select', function(){
 
